@@ -37,8 +37,6 @@
  * @param pdhm Diffie-Hellman key exchange context
  * @param filename file from which to read P and G
  */
-void DH_get0_key( DH *dh,
-                  BIGNUM **pub_key, BIGNUM **priv_key);
 DH * __read_pg_from_file(const char * filename) {
     BIO * pbio;
     DH * pdh;
@@ -66,7 +64,7 @@ void my_receive(int sockfd, char * buffer, int length) {
     }
 }
 int BN_bn2bin(const BIGNUM *a, unsigned char *to);
-
+void DH_get0_key( DH *dh, BIGNUM **pub_key, BIGNUM **priv_key);
 int main(int argc, char* argv[]) {
     int k, n;
     int opt = 0;

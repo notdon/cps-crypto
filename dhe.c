@@ -64,6 +64,9 @@ void my_receive(int sockfd, char * buffer, int length) {
     }
 }
 
+int BN_bn2bin(const BIGNUM *a, unsigned char *to);
+void DH_get0_key( DH *dh, BIGNUM **pub_key, BIGNUM **priv_key);
+
 int main(int argc, char* argv[]) {
     int opt = 0;
     int ret = 0;
@@ -108,10 +111,10 @@ int main(int argc, char* argv[]) {
     // Check the function DH_generate_key
     // See documentation at:
     // https://www.openssl.org/docs/man1.1.0/crypto/
-
+    int publickey = DH_generate_key(tdh);
     // TODO 2: obtain the public and private keys in the BIGNUM structs
     // pub_key and priv_key. Check what methods (DH_get..) may help you do that
-
+    DH_get0_key(tdh, &pub_key, &priv_key);
     // Export public key to binary and print it
     n =  BN_num_bytes(pub_key);
     printf("[client] Pub key has %d bytes\n", n);
@@ -165,10 +168,11 @@ int main(int argc, char* argv[]) {
     // Obtain the secret key
 
     // TODO 3:get the public key into the BIGNUM buffer pub_key_theirs (what might correspond to BN_bn2bin ?)
-
+    BN_bn2bin(pub_key,buf_pubkey_theirs);
     // TODO 4: compute the secret key from our DH structure and the other party public key
     // return the length in the integer n, although we expect it to be PUB_KEY_LEN
-
+    unsigned char * n = DH_size(tdh);
+    DH_compute_key(&n, publickey, tdh);
     // Print exchanged secret key
     printf("[client] Exchanged secret key has %d bytes\n", n);
     printf("[client] The exchanged secret key is: ");
