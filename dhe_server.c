@@ -63,47 +63,50 @@ void my_receive(int sockfd, char * buffer, int length) {
         bytes_received += rc;
     }
 }
+
 int BN_bn2bin(const BIGNUM *a, unsigned char *to);
+int DH_compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh);
 void DH_get0_key( DH *dh, BIGNUM **pub_key, BIGNUM **priv_key);
+
+
 int main(int argc, char* argv[]) {
-    int k, n;
     int opt = 0;
-    int listen_fd = 0;
-    int connect_fd = 0;
-    char buf[MAXSIZE];
+    int ret = 0;
+    int k, n, len;
     int file_fd;
-    char file_size[256];
-    int len = 0;
+    int file_size;
+    int total = 0;
     unsigned char buf_pubkey_ours[256];
     unsigned char buf_pubkey_theirs[256];
     unsigned char buf_secret_key[256];
     BIGNUM *pub_key, *priv_key, *pub_key_theirs;
-    unsigned int serv_port = 1337;
-    char* serv_ip = "127.0.0.1";
-    char* filename = "smallfile.dat";
-    struct sockaddr_in client_addr, server_addr;
-    socklen_t client_len;
-    size_t bytes_sent, bytes_read;
+    unsigned int server_port = 1337;
+    struct sockaddr_in server_addr;
+    socklen_t server_len;
+    char* server_ip = "127.0.0.1";
+    char* filename = "recv_file";
+    int client_sockfd = 0;
+    struct timeval start, connect_done, transfer_done;
 
-    // get arg params
+    // Get arguments
     while ((opt = getopt(argc, argv, "i:p:f:")) != -1) {
         switch (opt) {
             case 'i':
-                serv_ip = optarg;
+                server_ip = optarg;
                 break;
             case 'p':
-                serv_port = atoi(optarg);
+                server_port = atoi(optarg);
                 break;
             case 'f':
                 filename = optarg;
                 break;
             default:
-                fprintf(stderr, "Usage %s [-i IP] [-p PORT] [-f FILENAME]\n", argv[0]);
+                fprintf(stderr, "Usage %s [-i SERVER_IP] [-p PORT] [-f RECV_FILENAME]\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
 
-    // get DH public key using fixed parameters
+    // Get fixed parameters
     DH * tdh = __read_pg_from_file("dhparam.pem");
 
     // TODO 1: obtain DH public key from the parameters already saved in tdh
@@ -113,75 +116,72 @@ int main(int argc, char* argv[]) {
     int publickey = DH_generate_key(tdh);
     // TODO 2: obtain the public and private keys in the BIGNUM structs
     // pub_key and priv_key. Check what methods (DH_get..) may help you do that
-    // DH_get0_key( *tdh, **pub_key, **priv_key);
     DH_get0_key(tdh, &pub_key, &priv_key);
     // Export public key to binary and print it
     n =  BN_num_bytes(pub_key);
-    printf("[server] Pub key has %d bytes\n", n);
+    printf("[client] Pub key has %d bytes\n", n);
     CHECK(PUB_KEY_LEN == n, "DH PUB KEY LEN");
     BN_bn2bin(pub_key, buf_pubkey_ours);
-    printf("[server] Our public key is: ");
+    printf("[client] Our public key is: ");
     for(k=0; k<n; k++)
       printf("%02X", buf_pubkey_ours[k]);
     printf("\n");
 
-    /* Create new socket */
-    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-    CHECK(listen_fd >= 0, "socket");
+    /* Open a TCP socket */
+    client_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (client_sockfd < 0) {
+        perror("Error in socket()");
+        exit(ERR_SOCKET);
+    }
 
     /* Setup sockaddr_in struct */
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(serv_ip);
-    server_addr.sin_port = htons(serv_port);
+    server_addr.sin_addr.s_addr = inet_addr(server_ip);
+    server_addr.sin_port = htons(server_port);
 
-    /* Bind */
-    CHECK(bind(listen_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) >= 0, "bind");
+    server_len = sizeof(server_addr);
 
-    /* Listen */
-    CHECK(listen(listen_fd, 0) >= 0, "listen");
+    /* Open file */
+    file_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    CHECK(file_fd >= 0, "open");
 
-    printf("[server] Server listening on port %d...\n", serv_port);
+    /* Connect */
+    gettimeofday(&start, NULL);
+    ret = connect (client_sockfd, (struct sockaddr *) &server_addr, server_len);
+    gettimeofday(&connect_done, NULL);
+    CHECK(ret >= 0, "connect");
 
-    /* Accept incoming connections */
-    while(1) {
-        client_len = sizeof(client_addr);
-        connect_fd = accept(listen_fd, (struct sockaddr *) &client_addr, &client_len);
-        CHECK(connect_fd >= 0, "accept");
+    printf("[client] Connected to %d\n", server_port);
 
-        printf("[server] Got a request...\n");
+    // Send our public key
+    printf("[client] Sending public key...\n");
+    len = send(client_sockfd, buf_pubkey_ours, n, 0);
+    CHECK(len >= 0, "send");
 
-        printf("[server] Sending public key...\n");
-        len = send(connect_fd, buf_pubkey_ours, n, 0);
-        CHECK(len >= 0, "send");
+    // Get the other party public key
+    my_receive(client_sockfd, buf_pubkey_theirs, 256);
+    printf("[client] Received public key from server...\n");
+    printf("[client] The received public key is: ");
+    for(k=0; k<PUB_KEY_LEN; k++)
+      printf("%02X", buf_pubkey_theirs[k]);
+    printf("\n");
 
-        my_receive(connect_fd, buf_pubkey_theirs, 256);
-        printf("[server] Received public key from client...\n");
-        printf("[server] The received public key is: ");
-        for(k=0; k<PUB_KEY_LEN; k++)
-          printf("%02X", buf_pubkey_theirs[k]);
-        printf("\n");
+    // Obtain the secret key
 
-        // Obtain the secret key
-
-        // TODO 3:get the public key into the BIGNUM buffer pub_key_theirs (what might correspond to BN_bn2bin ?)
-        BN_bn2bin(pub_key,buf_pubkey_theirs);
-        // TODO 4: compute the secret key from our DH structure and the other party public key
-        // return the length in the integer n, although we expect it to be PUB_KEY_LEN
-        // printf("test");
-        unsigned char * n = DH_size(tdh);
-        DH_compute_key(&n, publickey, tdh);
-
-        // Print exchanged secret key
-        printf("[client] Exchanged secret key has %d bytes\n", n);
-        printf("[client] The exchanged secret key is: ");
-        for(k=0; k<n; k++)
-          printf("%02X", buf_secret_key[k]);
-        printf("\n");
-    }
-
-    close(listen_fd);
-    close(file_fd);
-
+    // TODO 3:get the public key into the BIGNUM buffer pub_key_theirs (what might correspond to BN_bn2bin ?)
+    BN_bn2bin(pub_key,buf_pubkey_theirs);
+    // TODO 4: compute the secret key from our DH structure and the other party public key
+    // return the length in the integer n, although we expect it to be PUB_KEY_LEN
+    unsigned char a = DH_size(tdh);
+    DH_compute_key(&a, publickey, tdh);
+    // Print exchanged secret key
+    printf("[client] Exchanged secret key has %d bytes\n", n);
+    printf("[client] The exchanged secret key is: ");
+    for(k=0; k<n; k++)
+      printf("%02X", buf_secret_key[k]);
+    printf("\n");
+    
 
     DH_free(tdh);
     return 0;

@@ -65,7 +65,9 @@ void my_receive(int sockfd, char * buffer, int length) {
 }
 
 int BN_bn2bin(const BIGNUM *a, unsigned char *to);
+int DH_compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh);
 void DH_get0_key( DH *dh, BIGNUM **pub_key, BIGNUM **priv_key);
+
 
 int main(int argc, char* argv[]) {
     int opt = 0;
@@ -171,8 +173,8 @@ int main(int argc, char* argv[]) {
     BN_bn2bin(pub_key,buf_pubkey_theirs);
     // TODO 4: compute the secret key from our DH structure and the other party public key
     // return the length in the integer n, although we expect it to be PUB_KEY_LEN
-    unsigned char * n = DH_size(tdh);
-    DH_compute_key(&n, publickey, tdh);
+    unsigned char a = DH_size(tdh);
+    DH_compute_key(&a, publickey, tdh);
     // Print exchanged secret key
     printf("[client] Exchanged secret key has %d bytes\n", n);
     printf("[client] The exchanged secret key is: ");
